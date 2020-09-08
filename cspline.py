@@ -65,15 +65,27 @@ class CSpline:
         C = self.control_points[self.i_handle_after(t)]
         D = self.control_points[self.i_center_after(t)]
         t = t % 1.0  # note, we have both `t` and `T` in this scope.
-        P = lerp(A, B, t)
-        Q = lerp(B, C, t)
-        R = lerp(C, D, t)
-        S = lerp(P, Q, t)
-        T = lerp(Q, R, t)  # `T` is a position, `t` is the interpolant
-        O = lerp(S, T, t)
-        # TODO: Reduce the number of `lerp`s by using Hermite polynomials
-        #       https://en.wikipedia.org/wiki/Cubic_Hermite_spline#Representations
-        return O
+        # P = lerp(A, B, t)
+        # Q = lerp(B, C, t)
+        # R = lerp(C, D, t)
+        # S = lerp(P, Q, t)
+        # T = lerp(Q, R, t)  # `T` is a position, `t` is the interpolant
+        # O = lerp(S, T, t)
+        # return O
+
+        # Reducing the number of `lerp`s by using basis polynomials.
+        # https://en.wikipedia.org/wiki/Bézier_curve
+        # https://en.wikipedia.org/wiki/Cubic_Hermite_spline#Representations
+        T = 1 - t  # note: using this variable name differently to above.
+        t2 = t * t
+        T2 = T * T
+        return (
+            (    T * T2) * A +
+            (3 * t * T2) * B +
+            (3 * T * t2) * C +
+            (    t * t2) * D
+        )
+
 
 if __name__ == '__main__':
     import visualization
