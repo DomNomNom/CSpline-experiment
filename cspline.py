@@ -36,6 +36,8 @@ class CSpline:
             ...
         ]
         '''
+        assert len(control_points) > 0
+        assert len(control_points) % 3 == 0
         self.control_points = control_points
 
     # These methods return indecies into control_points.
@@ -102,8 +104,7 @@ class CSpline:
         (RLBot discord) https://discordapp.com/channels/348658686962696195/535605770436345857/752888844814123048
         """
         projected = self.control_points[:,axis]
-        centers = projected[::3]
-        i_hi_center = 3 * bisect.bisect_left(centers, x)
+        i_hi_center = 3 * bisect.bisect_left(projected[::3], x)
         i_lo_center = i_hi_center - 3
 
         assert i_lo_center >= 0, 'TODO: lo extrapolation'
@@ -117,38 +118,38 @@ class CSpline:
         C = projected[i_hi_center+1]
         D = projected[i_hi_center]
 
+        # Shift/scale everything such that A=0 and D=1.
+        # This is going to make our equations simpler.
+        B -= A
+        C -= A
+        D -= A
+        x -= A
+        B /= D
+        C /= D
+        x /= D
+        # Remove them from the scope so we don't accidentally refer to them.
+        del A
+        del D
 
         # Find t via the bisection method.
-        def spline1d(t: float) -> float:
-            T = 1 - t
-            t2 = t * t
-            T2 = T * T
-            return (
-                (    T * T2) * A +
-                (3 * t * T2) * B +
-                (3 * T * t2) * C +
-                (    t * t2) * D
-            )
         lo = 0.
         hi = 1.
         t = 0.5  # this t is purely between A and D, not the full spline.
         for _ in range(approximation_iterations//2):
-            got_x = spline1d(t)
+            T = 1 - t
+            t2 = t * t
+            T2 = T * T
+            got_x = (
+                # fast 1D spline evaluation. (we dropped the A term because it's zero)
+                (3 * t * T2) * B +
+                (3 * T * t2) * C +
+                (    t * t2)
+            )
             if got_x < x:
                 lo = t
             else:
                 hi = t
             t = (lo+hi)/2
-
-        # shift/scale everything such that A=0 and D=1
-        # B -= A
-        # C -= A
-        # D -= A
-        # x -= A
-        # B /= D
-        # B /= D
-        # x /= D
-
 
         # Refine t using Newton's method on the 1D spline (points are no longer vectors but numbers)
         # We also keep using the bounds found in bisection as tricky derivatives can lead us astray.
@@ -159,11 +160,8 @@ class CSpline:
             T = t-1
             tt = t*t
             TT = T*T
-            t -= (A*TT*T/3 - B*t*TT + C*tt*T - D*tt*t/3 + x/3)/(A*TT - 2*B*t*T - B*TT + C*tt + 2*C*t*T - D*tt)
+            t -= (C*tt*T - B*t*TT - tt*t/3 + x/3)/(C*tt - 2*B*t*T - B*TT + 2*C*t*T - tt)
             t = max(min(t, hi), lo) # Sanity-check with the bounds from bisection.
-
-
-
 
         return i_lo_center / 3 + t
 

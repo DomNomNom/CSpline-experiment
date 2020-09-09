@@ -116,7 +116,7 @@ def main():
         Could optimize the number of lines by taking curvature and view_box ranges into account.
         """
         spline = CSpline(control_points)
-        t_extrapolation = 2.5  # how far to draw the straight lines past the
+        t_extrapolation = 1  # how far to draw the straight lines past the
         t_min = 0 - t_extrapolation
         t_max = len(control_points)//3 - 1  + t_extrapolation
         return np.array([
