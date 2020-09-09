@@ -90,7 +90,8 @@ class CSpline:
 
     def fast_intersect(self, x: float, axis: int=0, approximation_iterations=5) -> float:
         """
-        Returns a t such that self.get_pos(t)[axis] == x
+        Returns a `t` such that `self.get_pos(t)[axis]` is very close to `x`.
+        Increase approximation_iterations to get closer.
 
         This requires a couple of assumtions:
             All centers are sorted along the given axis.
@@ -98,7 +99,7 @@ class CSpline:
             (fewer constraints for the first and last handle)
 
         Proof that this should return a unique solution:
-        https://discordapp.com/channels/348658686962696195/535605770436345857/752888844814123048
+        (RLBot discord) https://discordapp.com/channels/348658686962696195/535605770436345857/752888844814123048
         """
         projected = self.control_points[:,axis]
         centers = projected[::3]
@@ -118,7 +119,7 @@ class CSpline:
 
 
         # Find t via the bisection method.
-        def spline1d(t):
+        def spline1d(t: float) -> float:
             T = 1 - t
             t2 = t * t
             T2 = T * T
@@ -130,7 +131,7 @@ class CSpline:
             )
         lo = 0.
         hi = 1.
-        t = 0.5  # this t is purely between A and D, not the full spline t.
+        t = 0.5  # this t is purely between A and D, not the full spline.
         for _ in range(approximation_iterations//2):
             got_x = spline1d(t)
             if got_x < x:
@@ -138,7 +139,6 @@ class CSpline:
             else:
                 hi = t
             t = (lo+hi)/2
-        # return i_lo_center / 3 + t
 
         # # find t via exactly solving the equation
         # from math import sqrt as positive_sqrt
