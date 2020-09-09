@@ -3,6 +3,7 @@ from pyqtgraph.Qt import QtGui, QtCore
 import numpy as np
 import itertools
 
+Vec = np.array
 def Vec2(x, y):
     return np.array([x,y], dtype=float)
 def Vec3(x, y, z):
@@ -36,6 +37,7 @@ class CSpline:
         '''
         self.control_points = control_points
 
+    # These methods return indecies into control_points.
     def i_center_before(self, t:float):
         return int(t) * 3
     def i_center_after(self, t:float):
@@ -45,7 +47,7 @@ class CSpline:
     def i_handle_after(self, t:float):
         return self.i_center_before(t) + 3+1
 
-    def get_pos(self, t: float):
+    def get_pos(self, t: float) -> Vec:
         # Handle things outside the normal range by extrapolating.
         max_interp_t = len(self.control_points)//3 - 1
         if t <= 0: # extrapolate at start
