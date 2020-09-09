@@ -87,6 +87,14 @@ class CSpline:
             (    t * t2) * D
         )
 
+    def fast_intersect(self, x: float, axis: int=0) -> Vec:
+        """
+        Returns a t such that self.get_pos(t)[axis] == x
+        This requires a couple of assumtions:
+            all centers are sorted along the given axis.
+            for all handles, previous_center <= handle <= next_center along the given axis.
+        """
+        pass # TODO
 
 if __name__ == '__main__':
     import visualization
