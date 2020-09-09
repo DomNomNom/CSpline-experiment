@@ -14,7 +14,7 @@ def lerp(a,b,t):
 
 class CSpline:
     """
-    A cubic hermite spline where defined by control points which define
+    A Cubic Bézier Spline where defined by control points which define
        "center"s - positions that the curve passes through as well as
        "handle"s - positions relative to a center which defines the tangent in that direction.
     """
@@ -75,7 +75,6 @@ class CSpline:
 
         # Reducing the number of `lerp`s by using basis polynomials.
         # https://en.wikipedia.org/wiki/Bézier_curve
-        # https://en.wikipedia.org/wiki/Cubic_Hermite_spline#Representations
         T = 1 - t  # note: using this variable name differently to above.
         t2 = t * t
         T2 = T * T
