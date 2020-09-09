@@ -124,7 +124,7 @@ def main():
             for t in np.linspace(
                 t_min,
                 t_max,
-                num=50*(t_max-t_min) + 1
+                num=int(50*(t_max-t_min) + 1)
             )
         ])
     spline_curve = pg.PlotDataItem(pen=pg.mkPen(width=2, color='#ff0000ee'))
