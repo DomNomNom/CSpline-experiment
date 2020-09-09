@@ -103,21 +103,20 @@ class CSpline:
         Proof that this should return a unique solution:
         (RLBot discord) https://discordapp.com/channels/348658686962696195/535605770436345857/752888844814123048
         """
-        projected = self.control_points[:,axis]
+        projected = self.control_points[:,axis]  # do everything in 1D, in the axis of choice
         i_hi_center = 3 * bisect.bisect_left(projected[::3], x)
         i_lo_center = i_hi_center - 3
 
-        if i_lo_center < 0:
-            # extrapolate on the lower end
+        if i_lo_center < 0:  # extrapolate on the lower end
             C = projected[i_hi_center+1]
             D = projected[i_hi_center]
             return (D - x) / (C - D)
-        max_interp_t = len(self.control_points)//3 - 1
-        if i_hi_center >= len(projected):
-            # extrapolate on the lower end
+        if i_hi_center >= len(projected): # extrapolate on the lower end
             A = projected[i_lo_center]
             B = projected[i_lo_center+2]
+            max_interp_t = len(self.control_points)//3 - 1
             return max_interp_t + (x - A) / (B - A)
+
         assert projected[i_lo_center] <= x <= projected[i_hi_center]
 
         # Variable names according to this:
@@ -136,11 +135,8 @@ class CSpline:
         B /= D
         C /= D
         x /= D
-        # Remove them from the scope so we don't accidentally refer to them.
-        del A
-        del D
 
-        # Find t via the bisection method.
+        # Find an approximation of t via the bisection method.
         lo = 0.
         hi = 1.
         t = 0.5  # this t is purely between A and D, not the full spline.
