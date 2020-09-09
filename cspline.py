@@ -140,20 +140,6 @@ class CSpline:
                 hi = t
             t = (lo+hi)/2
 
-        # # find t via exactly solving the equation
-        # from math import sqrt as positive_sqrt
-        # def sqrt(x):
-        #     if x < 0:
-        #         print("yoloo ", x)
-        #         return positive_sqrt(-x)
-        #     return positive_sqrt(x)
-        # def cuberoot(x):
-        #     if x>0:
-        #         return x**(1./3.)
-        #     else:
-        #         return -((-x)**(1./3.))
-        # return -(-3*(3*A - 3*B)/(A - 3*B + 3*C - D) + (-3*A + 6*B - 3*C)**2/(A - 3*B + 3*C - D)**2)/(3*cuberoot(27*(-A + x)/(2*(A - 3*B + 3*C - D)) - 9*(3*A - 3*B)*(-3*A + 6*B - 3*C)/(2*(A - 3*B + 3*C - D)**2) + sqrt(-4*(-3*(3*A - 3*B)/(A - 3*B + 3*C - D) + (-3*A + 6*B - 3*C)**2/(A - 3*B + 3*C - D)**2)**3 + (27*(-A + x)/(A - 3*B + 3*C - D) - 9*(3*A - 3*B)*(-3*A + 6*B - 3*C)/(A - 3*B + 3*C - D)**2 + 2*(-3*A + 6*B - 3*C)**3/(A - 3*B + 3*C - D)**3)**2)/2 + (-3*A + 6*B - 3*C)**3/(A - 3*B + 3*C - D)**3)) - (-3*A + 6*B - 3*C)/(3*(A - 3*B + 3*C - D)) - cuberoot(27*(-A + x)/(2*(A - 3*B + 3*C - D)) - 9*(3*A - 3*B)*(-3*A + 6*B - 3*C)/(2*(A - 3*B + 3*C - D)**2) + sqrt(-4*(-3*(3*A - 3*B)/(A - 3*B + 3*C - D) + (-3*A + 6*B - 3*C)**2/(A - 3*B + 3*C - D)**2)**3 + (27*(-A + x)/(A - 3*B + 3*C - D) - 9*(3*A - 3*B)*(-3*A + 6*B - 3*C)/(A - 3*B + 3*C - D)**2 + 2*(-3*A + 6*B - 3*C)**3/(A - 3*B + 3*C - D)**3)**2)/2 + (-3*A + 6*B - 3*C)**3/(A - 3*B + 3*C - D)**3)/3
-
         # shift/scale everything such that A=0 and D=1
         # B -= A
         # C -= A
@@ -174,8 +160,7 @@ class CSpline:
             tt = t*t
             TT = T*T
             t -= (A*TT*T/3 - B*t*TT + C*tt*T - D*tt*t/3 + x/3)/(A*TT - 2*B*t*T - B*TT + C*tt + 2*C*t*T - D*tt)
-            t = max(t, lo)
-            t = min(t, hi)
+            t = max(min(t, hi), lo) # Sanity-check with the bounds from bisection.
 
 
 
