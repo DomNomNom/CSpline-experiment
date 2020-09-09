@@ -116,6 +116,8 @@ class CSpline:
         C = projected[i_hi_center+1]
         D = projected[i_hi_center]
 
+
+        # Find t via the bisection method.
         def spline1d(t):
             T = 1 - t
             t2 = t * t
@@ -129,16 +131,30 @@ class CSpline:
         lo = 0.
         hi = 1.
         t = 0.5  # this t is purely between A and D, not the full spline t.
-        for _ in range(approximation_iterations):
+        for _ in range(approximation_iterations//2):
             got_x = spline1d(t)
             if got_x < x:
                 lo = t
             else:
                 hi = t
             t = (lo+hi)/2
-        return i_lo_center / 3 + t
+        # return i_lo_center / 3 + t
 
-        # # shift/scale everything such that A=0 and D=1
+        # # find t via exactly solving the equation
+        # from math import sqrt as positive_sqrt
+        # def sqrt(x):
+        #     if x < 0:
+        #         print("yoloo ", x)
+        #         return positive_sqrt(-x)
+        #     return positive_sqrt(x)
+        # def cuberoot(x):
+        #     if x>0:
+        #         return x**(1./3.)
+        #     else:
+        #         return -((-x)**(1./3.))
+        # return -(-3*(3*A - 3*B)/(A - 3*B + 3*C - D) + (-3*A + 6*B - 3*C)**2/(A - 3*B + 3*C - D)**2)/(3*cuberoot(27*(-A + x)/(2*(A - 3*B + 3*C - D)) - 9*(3*A - 3*B)*(-3*A + 6*B - 3*C)/(2*(A - 3*B + 3*C - D)**2) + sqrt(-4*(-3*(3*A - 3*B)/(A - 3*B + 3*C - D) + (-3*A + 6*B - 3*C)**2/(A - 3*B + 3*C - D)**2)**3 + (27*(-A + x)/(A - 3*B + 3*C - D) - 9*(3*A - 3*B)*(-3*A + 6*B - 3*C)/(A - 3*B + 3*C - D)**2 + 2*(-3*A + 6*B - 3*C)**3/(A - 3*B + 3*C - D)**3)**2)/2 + (-3*A + 6*B - 3*C)**3/(A - 3*B + 3*C - D)**3)) - (-3*A + 6*B - 3*C)/(3*(A - 3*B + 3*C - D)) - cuberoot(27*(-A + x)/(2*(A - 3*B + 3*C - D)) - 9*(3*A - 3*B)*(-3*A + 6*B - 3*C)/(2*(A - 3*B + 3*C - D)**2) + sqrt(-4*(-3*(3*A - 3*B)/(A - 3*B + 3*C - D) + (-3*A + 6*B - 3*C)**2/(A - 3*B + 3*C - D)**2)**3 + (27*(-A + x)/(A - 3*B + 3*C - D) - 9*(3*A - 3*B)*(-3*A + 6*B - 3*C)/(A - 3*B + 3*C - D)**2 + 2*(-3*A + 6*B - 3*C)**3/(A - 3*B + 3*C - D)**3)**2)/2 + (-3*A + 6*B - 3*C)**3/(A - 3*B + 3*C - D)**3)/3
+
+        # shift/scale everything such that A=0 and D=1
         # B -= A
         # C -= A
         # D -= A
@@ -147,16 +163,21 @@ class CSpline:
         # B /= D
         # x /= D
 
-        # # Newton's method on the 1D spline (points are no longer vectors but numbers)
-        # t = 0.5
-        # for _ in range(10):
-        #     # f(t) / f'(t) was generated via sympy:
-        #     # f = (3*t*(1-t)**2*B + 3*(1-t)*t**2*C + t**3) - x
-        #     # print(simplify(f / diff(f, t)))
-        #     T = t-1
-        #     tt = t*t
-        #     TT = t*t
-        #     t -= (B*t*TT - C*tt*T + tt*t/3 - x/3)/(2*B*t*T + B*TT - C*tt - 2*C*t*T + tt)
+
+        # Refine t using Newton's method on the 1D spline (points are no longer vectors but numbers)
+        # We also keep using the bounds found in bisection as tricky derivatives can lead us astray.
+        for _ in range((approximation_iterations+1)//2):
+            # f(t) / f'(t) was generated via sympy:
+            # f = (3*t*(1-t)**2*B + 3*(1-t)*t**2*C + t**3) - x
+            # print(simplify(f / diff(f, t)))
+            T = t-1
+            tt = t*t
+            TT = T*T
+            t -= (A*TT*T/3 - B*t*TT + C*tt*T - D*tt*t/3 + x/3)/(A*TT - 2*B*t*T - B*TT + C*tt + 2*C*t*T - D*tt)
+            t = max(t, lo)
+            t = min(t, hi)
+
+
 
 
         return i_lo_center / 3 + t

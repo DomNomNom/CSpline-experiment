@@ -140,7 +140,7 @@ def main():
         # intersect_pos = spline.get_pos(spline.fast_intersect(intersect_x))
         pos = [
             spline.get_pos(spline.fast_intersect(intersect_x, approximation_iterations=i))
-            for i in range(10)
+            for i in range(5)
         ]
         intersect.setData(
             pos=pos,
