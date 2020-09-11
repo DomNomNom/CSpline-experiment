@@ -6,8 +6,9 @@ import json, sys, os
 from os import path
 import argparse
 from math import atan2
-from typing import Optional
-
+from typing import Optional, List, Tuple
+import multiprocessing as mp
+from queue import Empty
 
 class ParameterCreatingPolicy():
     '''
@@ -130,12 +131,14 @@ class CartpolePIDPolicy(ParameterCreatingPolicy):
         return action
 
 
-def cem(f, parameters_mean, parameters_std, batch_size, elite_frac=.2):
+def cem(batch_f, parameters_mean, parameters_std, batch_size, elite_frac=.2):
     '''
     Generic implementation of the cross-entropy method for maximizing a black-box function
 
     Args:
-        f: a function mapping from parameters -> reward. CEM attempts to maximize reward. (total reward in RL scenarios)
+        batch_f: A function mapping from [parameters0, parameters1...]  -> [reward0, reward1, ...]
+            CEM attempts to maximize reward. (total reward in RL scenarios)
+            In usual implementations, cem() only takes the function mapping from parameters to rewards but this allows more parallelism.
         parameters_mean (np.array): initial mean of distribution of parameters. Has a shape acceptible by f.
         parameters_std (np.array): initial standard deviation of distribution of parameters. Same shape as parameters_mean.
         batch_size (int): number of samples of theta to evaluate per batch
@@ -160,7 +163,8 @@ def cem(f, parameters_mean, parameters_std, batch_size, elite_frac=.2):
 
         # Draw samples from a guassian distribution over parameters
         samples = np.array([parameters_mean + dth for dth in  parameters_std[None,:]*np.random.randn(batch_size, parameters_mean.size)])
-        rewards = np.array([f(parameters) for parameters in samples])
+        rewards = np.array(batch_f(samples))
+
         # Keep the best performing parameters.
         elite_indecies = rewards.argsort()[::-1][:n_elite]
         elite_samples = samples[elite_indecies]
@@ -177,6 +181,7 @@ def cem(f, parameters_mean, parameters_std, batch_size, elite_frac=.2):
             'elite_samples': elite_samples,
         }
 
+
 def do_rollout(agent, env, num_steps, render=False):
     total_reward = 0
     ob = env.reset()
@@ -189,6 +194,38 @@ def do_rollout(agent, env, num_steps, render=False):
         if done: break
     return total_reward
 
+def get_policy_class(policy_id):
+    policy_id_to_policy_class = {
+        'PendulumPolicy': PendulumPolicy,
+        'CartpolePolicy': CartpolePolicy,
+        'CartpolePIDPolicy': CartpolePIDPolicy,
+    }
+    if policy_id not in policy_id_to_policy_class:
+        raise NotImplementedError(f'No policy_id not found: {repr(policy_id)}')
+    return policy_id_to_policy_class[policy_id]
+
+def evaluator_process(env_id: str, policy_id: str, seed: int, num_steps: int,
+        parameters_q: mp.Queue, reward_q: mp.Queue):
+    '''
+    A class to hold data to run evaluations of the environment against a policy.
+    It is designed to be run.
+    parameters_q produces items like (ID: int, parameters: np.array)
+    reward_q receives items like (ID: int, reward: float)
+    '''
+    env = gym.make(env_id)
+    env.seed(seed)
+    np.random.seed(seed)
+
+    policy_class = get_policy_class(policy_id)
+    try:
+        while True:
+            (i, parameters) = parameters_q.get(block=True)
+            agent = policy_class(parameters)
+            reward = do_rollout(agent, env, num_steps)
+            reward_q.put((i, reward), block=True)
+    except KeyboardInterrupt:
+        pass
+
 
 if __name__ == '__main__':
     logger.set_level(logger.INFO)
@@ -196,28 +233,18 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--display', action='store_true')
     parser.add_argument('env_id', nargs='?', default='Pendulum-v0')
+    parser.add_argument('policy_id', nargs='?', default='PendulumPolicy')
     args = parser.parse_args()
 
-    env = gym.make(args.env_id)
-    env.seed(0)
-    np.random.seed(0)
-    num_steps = 200
-    if args.env_id == 'Pendulum-v0':
-        policy_class = PendulumPolicy
-    elif args.env_id == 'CartPole-v0':
-        policy_class = CartpolePolicy
-        # policy_class = CartpolePIDPolicy
-    else:
-        raise NotImplementedError(f'No policy for environment "{args.env_id}"')
-
     # Generate our parameter list by running once.
-    bootstrap = policy_class(parameters=None)
-    bootstrap.act(env.reset())
+    render_env = gym.make(args.env_id)
+    bootstrap = get_policy_class(args.policy_id)(parameters=None)
+    bootstrap.act(render_env.reset())
     cem_args = {
         'parameters_mean': bootstrap.parameters,
         'parameters_std': bootstrap.parameters_std,
         'batch_size': 250,
-        'elite_frac': 0.2,
+        'elite_frac': 0.1,
     }
 
     # ----------------------------------------
@@ -225,33 +252,73 @@ if __name__ == '__main__':
     # directory, but can't contain previous monitor results. You can
     # also dump to a tempdir if you'd like: tempfile.mkdtemp().
     outdir = '/tmp/cem-agent-results'
-    # env = wrappers.Monitor(env, outdir, force=True)
     # Prepare snapshotting
     def writefile(fname, s):
         with open(path.join(outdir, fname), 'w') as fh: fh.write(s)
     # Write out the env so we store the parameters of this environment.
     writefile('info.json', json.dumps({
         'argv': sys.argv,
-        'env_id': env.spec.id,
+        'env_id': args.env_id,
+        'policy_id': args.policy_id,
         'cem_args': cem_args,
     }))
     # ------------------------------------------
 
-    def noisy_evaluation(parameters):
-        agent = policy_class(parameters)
-        return do_rollout(agent, env, num_steps)
+
+    num_steps = num_steps = 200
+    num_processes = 12
+    eval_timeout = 0.5  # maximum seconds for a single result to come back
+    ctx = mp.get_context('spawn')
+    parameters_q = ctx.Queue()
+    reward_q = ctx.Queue()
+    evaluators = [
+        ctx.Process(
+            target=evaluator_process,
+            args=(args.env_id, args.policy_id, i, num_steps, parameters_q, reward_q),
+            daemon=True)
+        for i in range(num_processes)
+    ]
+    for evaluator in evaluators:
+        evaluator.start()
+
+    def evaluate_batch(samples: List[np.array]) -> List[float]:
+        for i, parameters in enumerate(samples):
+            parameters_q.put((i, list(parameters)))
+
+        results = [None] * len(samples)
+        for _ in range(len(samples)):
+            try:
+                (i, result) = reward_q.get(block=True, timeout=eval_timeout)
+                results[i] = result
+            except Empty:
+                raise RuntimeError('Not all evaluations completed. :(')
+        assert all(result is not None for result in results)
+        return results
 
     # Train the agent, and snapshot each stage.
-    for (i, iterdata) in enumerate(cem(noisy_evaluation, **cem_args)):
-        print('Iteration %2i. Episode mean reward: %5.0f  std: %2.3f'%(i, iterdata['rewards'].mean(), iterdata['parameters_std'].mean()))
+    iterdata = None
+    try:
+        for (i, iterdata) in enumerate(cem(evaluate_batch, **cem_args)):
+            print('Iteration %2i. Episode mean reward: %5.0f  std: %2.3f'%(i, iterdata['rewards'].mean(), iterdata['parameters_std'].mean()))
 
-        # Do a little preview of the current best estimate.
-        agent = policy_class(iterdata['parameters_mean'])
-        if args.display: do_rollout(agent, env, num_steps, render=True)
-        writefile('agent-%.4i.pkl'%i, str(pickle.dumps(agent, -1)))
+            # Do a little preview of the current best estimate.
+            agent = get_policy_class(args.policy_id)(parameters=iterdata['parameters_mean'])
+            if args.display:
+                do_rollout(agent, render_env, num_steps, render=True)
+            writefile('agent-%.4i.pkl'%i, str(pickle.dumps(agent, -1)))
 
-        if iterdata['parameters_std'].mean() < 0.0001:
-            print('done: parameters have converged: ', iterdata['parameters_mean'])
-            break
+            if iterdata['parameters_std'].mean() < 0.0001:
+                print('done: parameters have converged: ', iterdata['parameters_mean'])
+                break
+    except KeyboardInterrupt:
+        print('cancelled')
+        if iterdata is not None:
+            print('current parameters_mean: ', iterdata['parameters_mean'])
 
-    env.close()
+    # try to work around https://bugs.python.org/issue41761
+    for p in evaluators:
+        p.kill()
+        p.join(timeout=.1)
+        p.close()
+    parameters_q.close()
+    reward_q.close()
