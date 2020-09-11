@@ -59,7 +59,6 @@ class ParameterCreatingPolicy():
         self.current_parameter = 0  # any subclass must reset this counter!
         raise NotImplementedError()
 
-
 class PendulumPolicy(ParameterCreatingPolicy):
     '''
     A policy to solve Pendulum-v0
@@ -70,8 +69,12 @@ class PendulumPolicy(ParameterCreatingPolicy):
 
         y, x, thetadot = observation
         theta = atan2(x,y)
-        p(2)
-        torque = y
+
+        torque_add_energy = thetadot*10000
+        torque_top_control = p(0) * x + p(0) * thetadot + p(0) * y + p(0) * x**2
+        energy = y * p(1) + abs(thetadot)
+        torque = torque_add_energy if energy < p(1, 10) else torque_top_control
+
         return [torque]
 
 class CartpolePolicy(ParameterCreatingPolicy):
@@ -126,13 +129,14 @@ class CartpolePIDPolicy(ParameterCreatingPolicy):
         action = np.round(action).astype(np.int32)
         return action
 
+
 def cem(f, parameters_mean, parameters_std, batch_size, elite_frac=.2):
     '''
     Generic implementation of the cross-entropy method for maximizing a black-box function
 
     Args:
         f: a function mapping from parameters -> reward. CEM attempts to maximize reward. (total reward in RL scenarios)
-        parameters_mean (np.array): initial mean of distribution of parameters
+        parameters_mean (np.array): initial mean of distribution of parameters. Has a shape acceptible by f.
         parameters_std (np.array): initial standard deviation of distribution of parameters. Same shape as parameters_mean.
         batch_size (int): number of samples of theta to evaluate per batch
         elite_frac (float): each batch, select this fraction of the top-performing samples
@@ -181,9 +185,10 @@ def do_rollout(agent, env, num_steps, render=False):
         (ob, reward, done, _info) = env.step(a)
 
         total_reward += reward
-        if render and t%3==0: env.render()
+        if render and t%1==0: env.render()
         if done: break
     return total_reward
+
 
 if __name__ == '__main__':
     logger.set_level(logger.INFO)
@@ -211,7 +216,7 @@ if __name__ == '__main__':
     cem_args = {
         'parameters_mean': bootstrap.parameters,
         'parameters_std': bootstrap.parameters_std,
-        'batch_size': 25,
+        'batch_size': 250,
         'elite_frac': 0.2,
     }
 
@@ -248,6 +253,5 @@ if __name__ == '__main__':
         if iterdata['parameters_std'].mean() < 0.0001:
             print('done: parameters have converged: ', iterdata['parameters_mean'])
             break
-
 
     env.close()
