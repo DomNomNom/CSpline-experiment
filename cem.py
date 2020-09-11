@@ -60,7 +60,7 @@ class ParameterCreatingPolicy():
         self.current_parameter = 0  # any subclass must reset this counter!
         raise NotImplementedError()
 
-class PendulumPolicy(ParameterCreatingPolicy):
+class EnergyPendulumPolicy(ParameterCreatingPolicy):
     '''
     A policy to solve Pendulum-v0
     '''
@@ -77,6 +77,34 @@ class PendulumPolicy(ParameterCreatingPolicy):
         torque = torque_add_energy if energy < p(1, 10) else torque_top_control
 
         return [torque]
+
+class PiecewisePendulumPolicy(ParameterCreatingPolicy):
+    '''
+    A piecewise linear policy to solve Pendulum-v0
+    '''
+    def act(self, observation):
+        self.current_parameter = 0
+        p = self.param  # shorthand for creating or reading parameters.
+
+
+        squared = observation * observation # square each variable
+        all_variables = np.hstack([observation, squared])
+
+
+        def p_vec3():
+            return np.array([p(0), p(0), p(0)])
+
+        def linear_function():
+            return p_vec3().dot(observation)
+
+        num_piecewise = 3
+        conditions = [linear_function() > 0 for _ in range(num_piecewise)]
+        torques = [linear_function() for _ in range(num_piecewise)]
+        for condition, torque in zip(conditions, torques):
+            if condition:
+                return [torque]
+
+        return [torques[-1]]
 
 class CartpolePolicy(ParameterCreatingPolicy):
     '''
@@ -196,7 +224,8 @@ def do_rollout(agent, env, num_steps, render=False):
 
 def get_policy_class(policy_id):
     policy_id_to_policy_class = {
-        'PendulumPolicy': PendulumPolicy,
+        'EnergyPendulumPolicy': EnergyPendulumPolicy,
+        'PiecewisePendulumPolicy': PiecewisePendulumPolicy,
         'CartpolePolicy': CartpolePolicy,
         'CartpolePIDPolicy': CartpolePIDPolicy,
     }
@@ -233,7 +262,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--display', action='store_true')
     parser.add_argument('env_id', nargs='?', default='Pendulum-v0')
-    parser.add_argument('policy_id', nargs='?', default='PendulumPolicy')
+    parser.add_argument('policy_id', nargs='?', default='EnergyPendulumPolicy')
     args = parser.parse_args()
 
     # Generate our parameter list by running once.
