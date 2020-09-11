@@ -1,14 +1,14 @@
-import gym
-from gym import wrappers, logger
+from gym import wrappers, logger, make as make_env
+from math import atan2
+from os import path
+from queue import Empty
+from typing import Optional, List, Tuple
+import argparse
+import json
+import sys
+import multiprocessing as mp
 import numpy as np
 import pickle
-import json, sys, os
-from os import path
-import argparse
-from math import atan2
-from typing import Optional, List, Tuple
-import multiprocessing as mp
-from queue import Empty
 
 class ParameterCreatingPolicy():
     '''
@@ -212,7 +212,7 @@ def evaluator_process(env_id: str, policy_id: str, seed: int, num_steps: int,
     parameters_q produces items like (ID: int, parameters: np.array)
     reward_q receives items like (ID: int, reward: float)
     '''
-    env = gym.make(env_id)
+    env = make_env(env_id)
     env.seed(seed)
     np.random.seed(seed)
 
@@ -237,7 +237,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Generate our parameter list by running once.
-    render_env = gym.make(args.env_id)
+    render_env = make_env(args.env_id)
     bootstrap = get_policy_class(args.policy_id)(parameters=None)
     bootstrap.act(render_env.reset())
     cem_args = {
