@@ -296,7 +296,7 @@ if __name__ == '__main__':
 
     num_steps = num_steps = 200
     num_processes = 12
-    eval_timeout = 0.5  # maximum seconds for a single result to come back
+    eval_timeout = 1.0  # maximum seconds for a single result to come back
     ctx = mp.get_context('spawn')
     parameters_q = ctx.Queue()
     reward_q = ctx.Queue()
