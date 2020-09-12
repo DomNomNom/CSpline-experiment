@@ -233,7 +233,7 @@ def get_policy_class(policy_id):
         raise NotImplementedError(f'No policy_id not found: {repr(policy_id)}')
     return policy_id_to_policy_class[policy_id]
 
-def evaluator_process(env_id: str, policy_id: str, seed: int, num_steps: int,
+def evaluator_process(env_id: str, policy_id: str, seed: int, num_steps: int, render: bool,
         parameters_q: mp.Queue, reward_q: mp.Queue):
     '''
     A class to hold data to run evaluations of the environment against a policy.
@@ -250,7 +250,7 @@ def evaluator_process(env_id: str, policy_id: str, seed: int, num_steps: int,
         while True:
             (i, parameters) = parameters_q.get(block=True)
             agent = policy_class(parameters)
-            reward = do_rollout(agent, env, num_steps)
+            reward = do_rollout(agent, env, num_steps, render)
             reward_q.put((i, reward), block=True)
     except KeyboardInterrupt:
         pass
@@ -294,6 +294,7 @@ if __name__ == '__main__':
     # ------------------------------------------
 
 
+    # Set up paralellism for running evaluations (multiprocessing gets around Python's GIL)
     num_steps = num_steps = 200
     num_processes = 12
     eval_timeout = 1.0  # maximum seconds for a single result to come back
@@ -303,12 +304,25 @@ if __name__ == '__main__':
     evaluators = [
         ctx.Process(
             target=evaluator_process,
-            args=(args.env_id, args.policy_id, i, num_steps, parameters_q, reward_q),
-            daemon=True)
+            args=(args.env_id, args.policy_id, i, num_steps, False, parameters_q, reward_q),
+            daemon=True
+        )
         for i in range(num_processes)
     ]
     for evaluator in evaluators:
         evaluator.start()
+
+    # Allow rendering of the current batch while we train the next.
+    render_timeout = 20.0
+    render_parameters_q = ctx.Queue()
+    render_reward_q = ctx.Queue()
+    render_evaluator = ctx.Process(
+        target=evaluator_process,
+        args=(args.env_id, args.policy_id, 0, num_steps, True, render_parameters_q, render_reward_q),
+        daemon=True
+    )
+    render_evaluator.start()
+
 
     def evaluate_batch(samples: List[np.array]) -> List[float]:
         for i, parameters in enumerate(samples):
@@ -331,10 +345,10 @@ if __name__ == '__main__':
             print('Iteration %2i. Episode mean reward: %5.0f  std: %2.3f'%(i, iterdata['rewards'].mean(), iterdata['parameters_std'].mean()))
 
             # Do a little preview of the current best estimate.
-            agent = get_policy_class(args.policy_id)(parameters=iterdata['parameters_mean'])
             if args.display:
-                do_rollout(agent, render_env, num_steps, render=True)
-            writefile('agent-%.4i.pkl'%i, str(pickle.dumps(agent, -1)))
+                if i > 0:
+                    _ = render_reward_q.get(block=True, timeout=render_timeout)
+                render_parameters_q.put((i, iterdata['parameters_mean']))
 
             if iterdata['parameters_std'].mean() < 0.0001:
                 print('done: parameters have converged: ', iterdata['parameters_mean'])
@@ -343,11 +357,17 @@ if __name__ == '__main__':
         print('cancelled')
         if iterdata is not None:
             print('current parameters_mean: ', iterdata['parameters_mean'])
+    finally:
+        # try to work around https://bugs.python.org/issue41761
+        for p in evaluators:
+            p.kill()
+            p.join(timeout=.1)
+            p.close()
+        parameters_q.close()
+        reward_q.close()
 
-    # try to work around https://bugs.python.org/issue41761
-    for p in evaluators:
-        p.kill()
-        p.join(timeout=.1)
-        p.close()
-    parameters_q.close()
-    reward_q.close()
+        render_evaluator.kill()
+        render_evaluator.join(timeout=.1)
+        render_evaluator.close()
+        render_parameters_q.close()
+        render_reward_q.close()
