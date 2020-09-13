@@ -4,6 +4,7 @@ from os import path
 from queue import Empty
 from typing import Optional, List, Tuple
 from cma import CMAEvolutionStrategy
+from cma.interfaces import OOOptimizer
 import argparse
 import json
 import sys
@@ -213,15 +214,17 @@ def cem(batch_f, parameters_mean, parameters_std, batch_size, elite_frac=.2):
 
 def do_rollout(agent, env, num_steps, render=False):
     total_reward = 0
-    ob = env.reset()
-    for t in range(num_steps):
-        a = agent.act(ob)
-        (ob, reward, done, _info) = env.step(a)
+    internal_repetitions = 10
+    for _ in range(internal_repetitions):
+        ob = env.reset()
+        for t in range(num_steps):
+            a = agent.act(ob)
+            (ob, reward, done, _info) = env.step(a)
 
-        total_reward += reward
-        if render and t%1==0: env.render()
-        if done: break
-    return total_reward
+            total_reward += reward
+            if render and t%1==0: env.render()
+            if done: break
+    return total_reward / internal_repetitions
 
 def get_policy_class(policy_id):
     policy_id_to_policy_class = {
@@ -255,6 +258,29 @@ def evaluator_process(env_id: str, policy_id: str, seed: int, num_steps: int, re
             reward_q.put((i, reward), block=True)
     except KeyboardInterrupt:
         pass
+
+class ConstantEvolutionaryStrategy(OOOptimizer):
+    '''
+    This class just runs the given parameters again and again to give a distribution of outcomes.
+    '''
+    def __init__(self, parameters, num_evals_per_batch=1000):
+        self.parameters = parameters
+        self.num_evals_per_batch = num_evals_per_batch
+        self.rewards = []
+
+    def ask(self):
+        return [self.parameters] * self.num_evals_per_batch
+
+    def tell(self, _, rewards):
+        self.rewards += rewards
+
+    def disp(self):
+        mean = np.mean(self.rewards)
+        std = np.std(self.rewards)
+        print(f'{mean:3.2f} +-{std:3.2f}')
+
+    def stop(self):
+        return False
 
 
 if __name__ == '__main__':
@@ -339,6 +365,17 @@ if __name__ == '__main__':
         assert all(result is not None for result in results)
         return results
 
+    es = CMAEvolutionStrategy(
+        bootstrap.parameters,
+        np.array(bootstrap.parameters_std).mean(),
+        {}
+    )
+    fixed_parameters = None
+    # fixed_parameters =  [-35.58775647064161, 7.139141109188349, 0.15075132253285728, 17.941036682053063, -13.076765083017541, 12.493062191075545, -8.244998281690211, -4.064504191474658, -12.403395249634258, -4.78482465245739, 11.249974937254391, 5.247903860892631, 5.090399438379839, -36.18993376643062, -6.5979123984128645, 8.232448235480183, 12.767369625204546, -5.977121808173037]
+    if fixed_parameters is not None:
+        es = ConstantEvolutionaryStrategy(fixed_parameters)
+
+
     # Train the agent, and snapshot each stage.
     iterdata = None
     batch_best = None
@@ -356,12 +393,8 @@ if __name__ == '__main__':
         #         print('done: parameters have converged: ', iterdata['parameters_mean'])
         #         break
 
-        es = CMAEvolutionStrategy(
-            bootstrap.parameters,
-            np.array(bootstrap.parameters_std).mean(),
-            {}
-        )
-        i=0
+
+        i = 0
         while not es.stop():
             solutions = es.ask()
             rewards = evaluate_batch(solutions)
@@ -380,7 +413,7 @@ if __name__ == '__main__':
         print('cancelled')
     finally:
         if batch_best is not None:
-            print('current batch_best: ', batch_best)
+            print('current batch_best: ', list(batch_best))
 
         # try to work around https://bugs.python.org/issue41761
         for p in evaluators:
