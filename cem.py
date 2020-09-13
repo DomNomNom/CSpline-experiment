@@ -3,6 +3,7 @@ from math import atan2
 from os import path
 from queue import Empty
 from typing import Optional, List, Tuple
+from cma import CMAEvolutionStrategy
 import argparse
 import json
 import sys
@@ -169,17 +170,17 @@ def cem(batch_f, parameters_mean, parameters_std, batch_size, elite_frac=.2):
             In usual implementations, cem() only takes the function mapping from parameters to rewards but this allows more parallelism.
         parameters_mean (np.array): initial mean of distribution of parameters. Has a shape acceptible by f.
         parameters_std (np.array): initial standard deviation of distribution of parameters. Same shape as parameters_mean.
-        batch_size (int): number of samples of theta to evaluate per batch
-        elite_frac (float): each batch, select this fraction of the top-performing samples
+        batch_size (int): number of solutions of theta to evaluate per batch
+        elite_frac (float): each batch, select this fraction of the top-performing solutions
 
     returns:
         An infinite generator of dicts. Subsequent dicts correspond to iterations of CEM algorithm.
         The dicts contain the following values:
         'parameters_mean': the mean of distribution of parameters. Should be a valid to pass to f.
         'parameters_std': the standard deviation of distribution of parameters
-        'samples': used samples from the distribution of parameters.
-        'rewards': numpy array with outputs of f evaluated at corresponding samples
-        'elite_samples': a subset of samples chosen for the next iteration.
+        'solutions': used solutions from the distribution of parameters.
+        'rewards': numpy array with outputs of f evaluated at corresponding solutions
+        'elite_solutions': a subset of solutions chosen for the next iteration.
     '''
     parameters_mean = np.array(parameters_mean)
     parameters_std = np.array(parameters_std)
@@ -189,24 +190,24 @@ def cem(batch_f, parameters_mean, parameters_std, batch_size, elite_frac=.2):
 
     while True:  # The caller is responsible for deciding when to stop.
 
-        # Draw samples from a guassian distribution over parameters
-        samples = np.array([parameters_mean + dth for dth in  parameters_std[None,:]*np.random.randn(batch_size, parameters_mean.size)])
-        rewards = np.array(batch_f(samples))
+        # Draw solutions from a guassian distribution over parameters
+        solutions = np.array([parameters_mean + dth for dth in  parameters_std[None,:]*np.random.randn(batch_size, parameters_mean.size)])
+        rewards = np.array(batch_f(solutions))
 
         # Keep the best performing parameters.
         elite_indecies = rewards.argsort()[::-1][:n_elite]
-        elite_samples = samples[elite_indecies]
+        elite_solutions = solutions[elite_indecies]
         # Fit a gaussian distribution distribution to the elites.
-        parameters_mean = elite_samples.mean(axis=0)
-        parameters_std = elite_samples.std(axis=0)
+        parameters_mean = elite_solutions.mean(axis=0)
+        parameters_std = elite_solutions.std(axis=0)
 
         # Give a progress update.
         yield {
             'parameters_mean' : parameters_mean,  # our current best guess at the best parameters.
             'parameters_std': parameters_std,
-            'samples': samples,
-            'rewards' : rewards,  # same order as samples.
-            'elite_samples': elite_samples,
+            'solutions': solutions,
+            'rewards' : rewards,  # same order as solutions.
+            'elite_solutions': elite_solutions,
         }
 
 
@@ -324,12 +325,12 @@ if __name__ == '__main__':
     render_evaluator.start()
 
 
-    def evaluate_batch(samples: List[np.array]) -> List[float]:
-        for i, parameters in enumerate(samples):
+    def evaluate_batch(solutions: List[np.array]) -> List[float]:
+        for i, parameters in enumerate(solutions):
             parameters_q.put((i, list(parameters)))
 
-        results = [None] * len(samples)
-        for _ in range(len(samples)):
+        results = [None] * len(solutions)
+        for _ in range(len(solutions)):
             try:
                 (i, result) = reward_q.get(block=True, timeout=eval_timeout)
                 results[i] = result
@@ -340,24 +341,47 @@ if __name__ == '__main__':
 
     # Train the agent, and snapshot each stage.
     iterdata = None
+    batch_best = None
     try:
-        for (i, iterdata) in enumerate(cem(evaluate_batch, **cem_args)):
-            print('Iteration %2i. Episode mean reward: %5.0f  std: %2.3f'%(i, iterdata['rewards'].mean(), iterdata['parameters_std'].mean()))
+        # for (i, iterdata) in enumerate(cem(evaluate_batch, **cem_args)):
+        #     print('Iteration %2i. Episode mean reward: %5.0f  std: %2.3f'%(i, iterdata['rewards'].mean(), iterdata['parameters_std'].mean()))
 
-            # Do a little preview of the current best estimate.
+        #     # Do a little preview of the current best estimate.
+        #     if args.display:
+        #         if i > 0:
+        #             _ = render_reward_q.get(block=True, timeout=render_timeout)
+        #         render_parameters_q.put((i, iterdata['parameters_mean']))
+
+        #     if iterdata['parameters_std'].mean() < 0.0001:
+        #         print('done: parameters have converged: ', iterdata['parameters_mean'])
+        #         break
+
+        es = CMAEvolutionStrategy(
+            bootstrap.parameters,
+            np.array(bootstrap.parameters_std).mean(),
+            {}
+        )
+        i=0
+        while not es.stop():
+            solutions = es.ask()
+            rewards = evaluate_batch(solutions)
+            batch_best = solutions[np.argmax(rewards)]
+            es.tell(solutions, [-reward for reward in rewards])  # negate because es minimizes.
+            es.disp()
+            # Do a little async preview of the current best estimate.
             if args.display:
-                if i > 0:
+                if render_parameters_q.empty():
+                    render_parameters_q.put((i, batch_best))
+                if not render_reward_q.empty():
                     _ = render_reward_q.get(block=True, timeout=render_timeout)
-                render_parameters_q.put((i, iterdata['parameters_mean']))
-
-            if iterdata['parameters_std'].mean() < 0.0001:
-                print('done: parameters have converged: ', iterdata['parameters_mean'])
-                break
+            i += 1
+        es.result_pretty()
     except KeyboardInterrupt:
         print('cancelled')
-        if iterdata is not None:
-            print('current parameters_mean: ', iterdata['parameters_mean'])
     finally:
+        if batch_best is not None:
+            print('current batch_best: ', batch_best)
+
         # try to work around https://bugs.python.org/issue41761
         for p in evaluators:
             p.kill()
