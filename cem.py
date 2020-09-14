@@ -88,10 +88,8 @@ class PiecewisePendulumPolicy(ParameterCreatingPolicy):
         self.current_parameter = 0
         p = self.param  # shorthand for creating or reading parameters.
 
-
         squared = observation * observation # square each variable
         all_variables = np.hstack([observation, squared])
-
 
         def p_vec3():
             return np.array([p(0), p(0), p(0)])
@@ -107,6 +105,33 @@ class PiecewisePendulumPolicy(ParameterCreatingPolicy):
                 return [torque]
 
         return [torques[-1]]
+
+class NeuralNetPendulumPolicy(ParameterCreatingPolicy):
+    '''
+    A policy that uses a neural net to make decisions
+    '''
+    def act(self, observation):
+        self.current_parameter = 0
+        p = self.param  # shorthand for creating or reading parameters.
+
+        layers = [
+            np.array(observation),
+            np.zeros(shape=(4,)),
+            # np.zeros(shape=(6,)),
+            np.zeros(shape=(2,)),
+        ]
+        connections = []
+        for i in range(len(layers)-1):
+            matrix = np.array([
+                [p(0) for _ in range(len(layers[i]))]
+                for _ in range(len(layers[i+1]))
+            ])
+            bias = [p(0) for _ in range(len(layers[i+1]))]
+            layers[i+1] = np.tanh(np.dot(matrix, layers[i]) + bias)
+
+        should_negate = -1 if layers[-1][1] > 0 else 1
+        return [layers[-1][0] * should_negate * 2.1]  # usually output something in the range -2..2
+
 
 class CartpolePolicy(ParameterCreatingPolicy):
     '''
@@ -214,7 +239,7 @@ def cem(batch_f, parameters_mean, parameters_std, batch_size, elite_frac=.2):
 
 def do_rollout(agent, env, num_steps, render=False):
     total_reward = 0
-    internal_repetitions = 10
+    internal_repetitions = 1
     for _ in range(internal_repetitions):
         ob = env.reset()
         for t in range(num_steps):
@@ -230,12 +255,38 @@ def get_policy_class(policy_id):
     policy_id_to_policy_class = {
         'EnergyPendulumPolicy': EnergyPendulumPolicy,
         'PiecewisePendulumPolicy': PiecewisePendulumPolicy,
+        'NeuralNetPendulumPolicy': NeuralNetPendulumPolicy,
         'CartpolePolicy': CartpolePolicy,
         'CartpolePIDPolicy': CartpolePIDPolicy,
     }
     if policy_id not in policy_id_to_policy_class:
         raise NotImplementedError(f'No policy_id not found: {repr(policy_id)}')
     return policy_id_to_policy_class[policy_id]
+
+def lowpriority():
+    """ Set the priority of the process to below-normal."""
+
+    import sys
+    try:
+        sys.getwindowsversion()
+    except AttributeError:
+        isWindows = False
+    else:
+        isWindows = True
+
+    if isWindows:
+        # Based on:
+        #   "Recipe 496767: Set Process Priority In Windows" on ActiveState
+        #   http://code.activestate.com/recipes/496767/
+        import win32api,win32process,win32con
+
+        pid = win32api.GetCurrentProcessId()
+        handle = win32api.OpenProcess(win32con.PROCESS_ALL_ACCESS, True, pid)
+        win32process.SetPriorityClass(handle, win32process.BELOW_NORMAL_PRIORITY_CLASS)
+    else:
+        import os
+
+        os.nice(1)
 
 def evaluator_process(env_id: str, policy_id: str, seed: int, num_steps: int, render: bool,
         parameters_q: mp.Queue, reward_q: mp.Queue):
@@ -250,6 +301,7 @@ def evaluator_process(env_id: str, policy_id: str, seed: int, num_steps: int, re
     np.random.seed(seed)
 
     policy_class = get_policy_class(policy_id)
+    lowpriority()
     try:
         while True:
             (i, parameters) = parameters_q.get(block=True)
@@ -263,13 +315,12 @@ class ConstantEvolutionaryStrategy(OOOptimizer):
     '''
     This class just runs the given parameters again and again to give a distribution of outcomes.
     '''
-    def __init__(self, parameters, num_evals_per_batch=1000):
+    def __init__(self, parameters):
         self.parameters = parameters
-        self.num_evals_per_batch = num_evals_per_batch
         self.rewards = []
 
-    def ask(self):
-        return [self.parameters] * self.num_evals_per_batch
+    def ask(self, number=1000, **kwargs):
+        return [self.parameters] * number
 
     def tell(self, _, rewards):
         self.rewards += rewards
@@ -365,13 +416,13 @@ if __name__ == '__main__':
         assert all(result is not None for result in results)
         return results
 
+    # Define our optimizer.
     es = CMAEvolutionStrategy(
         bootstrap.parameters,
         np.array(bootstrap.parameters_std).mean(),
         {}
     )
     fixed_parameters = None
-    # fixed_parameters =  [-35.58775647064161, 7.139141109188349, 0.15075132253285728, 17.941036682053063, -13.076765083017541, 12.493062191075545, -8.244998281690211, -4.064504191474658, -12.403395249634258, -4.78482465245739, 11.249974937254391, 5.247903860892631, 5.090399438379839, -36.18993376643062, -6.5979123984128645, 8.232448235480183, 12.767369625204546, -5.977121808173037]
     if fixed_parameters is not None:
         es = ConstantEvolutionaryStrategy(fixed_parameters)
 
@@ -396,11 +447,12 @@ if __name__ == '__main__':
 
         i = 0
         while not es.stop():
-            solutions = es.ask()
+            solutions = es.ask(number=100)
             rewards = evaluate_batch(solutions)
             batch_best = solutions[np.argmax(rewards)]
             es.tell(solutions, [-reward for reward in rewards])  # negate because es minimizes.
-            es.disp()
+            # es.disp()
+            print(f'i={i:4d} mean reward: {np.mean(rewards) :4.1f}')
             # Do a little async preview of the current best estimate.
             if args.display:
                 if render_parameters_q.empty():
