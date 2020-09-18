@@ -4,6 +4,7 @@ from queue import Empty
 from typing import Optional, List, Tuple
 from cma import CMAEvolutionStrategy
 from cma.interfaces import OOOptimizer
+from time import sleep
 import argparse
 import json
 import sys
@@ -76,7 +77,7 @@ class CrossEntopyMethodStrategy(OOOptimizer):
 
 def do_rollout(agent, env, num_steps, render=False):
     total_reward = 0
-    internal_repetitions = 10
+    internal_repetitions = 5
     for _ in range(internal_repetitions):
         ob = env.reset()
         for t in range(num_steps):
@@ -168,7 +169,7 @@ if __name__ == '__main__':
 
 
     # Set up paralellism for running evaluations (multiprocessing gets around Python's GIL)
-    num_steps = num_steps = 200
+    num_steps = 200
     num_processes = 10
     eval_timeout = 1.0  # maximum seconds for a single result to come back
     ctx = mp.get_context('spawn')
@@ -212,6 +213,7 @@ if __name__ == '__main__':
         return results
 
     # Define our optimizer.
+    batch_size = 100
     # es = CMAEvolutionStrategy(
     #     bootstrap.parameters,
     #     np.array(bootstrap.parameters_std).mean(),
@@ -220,7 +222,7 @@ if __name__ == '__main__':
     es = CrossEntopyMethodStrategy(
         bootstrap.parameters,
         bootstrap.parameters_std,
-        elite_frac=0.01,
+        elite_frac=0.1,
     )
     fixed_parameters = None
     if fixed_parameters is not None:
@@ -234,7 +236,7 @@ if __name__ == '__main__':
 
         i = 0
         while not es.stop():
-            solutions = es.ask(number=1000)
+            solutions = es.ask(number=batch_size)
             rewards = evaluate_batch(solutions)
             batch_best = solutions[np.argmax(rewards)]
             es.tell(solutions, [-reward for reward in rewards])  # negate because es minimizes.
@@ -247,6 +249,7 @@ if __name__ == '__main__':
                 if not render_reward_q.empty():
                     _ = render_reward_q.get(block=True, timeout=render_timeout)
             i += 1
+        print('evolution stopped.')
 
     except KeyboardInterrupt:
         print('cancelled')
@@ -267,3 +270,5 @@ if __name__ == '__main__':
         render_evaluator.close()
         render_parameters_q.close()
         render_reward_q.close()
+
+        sleep(1)
