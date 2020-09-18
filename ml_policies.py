@@ -94,6 +94,49 @@ class PiecewisePendulumPolicy(ParameterCreatingPolicy):
 
         return [torques[-1]]
 
+class DecisionTreePendulumPolicy(ParameterCreatingPolicy):
+    '''
+    A piecewise linear policy to solve Pendulum-v0
+    '''
+    def act(self, observation):
+        self.current_parameter = 0
+        p = self.param  # shorthand for creating or reading parameters.
+
+        squared = observation * observation # square each variable
+        all_variables = np.hstack([observation, squared])
+
+        def p_vec3():
+            return np.array([p(0), p(0), p(0)])
+
+        def linear_function():
+            return p_vec3().dot(observation)
+
+        depth = 1
+        # Have 2^depth - 1 binary decision nodes
+        # Then another layer of action functions returning torque.
+        funcs = [linear_function() for _ in range(2**(depth+1)-1)]
+        i = 0
+        for _ in range(depth):
+            if funcs[i] > 0:
+                i = 2*i + 1
+            else:
+                i = 2*i + 2
+        return [funcs[i]]
+
+class CompositePendulumPolicy(DecisionTreePendulumPolicy):
+    def __init__(self, parameters):
+        super().__init__(parameters)
+        self.fixed = DecisionTreePendulumPolicy([-16.672725288303283, -12.134884959878233, -1.4285792155686454, -20.39331887632949, 5.652793888691333, 4.996374674468103, 0.3263373036218867, -16.441060042818854, -4.130268121623661])
+
+    def act(self, observation):
+        out_super = super().act(observation)
+        out_fixed = self.fixed.act(observation)
+        if np.dot(observation, [self.param(0), self.param(0), self.param(0)]) > 0:
+            return out_fixed
+
+        return out_fixed
+
+
 class NeuralNetPendulumPolicy(ParameterCreatingPolicy):
     '''
     A policy that uses a neural net to make decisions
@@ -117,7 +160,7 @@ class NeuralNetPendulumPolicy(ParameterCreatingPolicy):
             bias = [p(0) for _ in range(len(layers[i+1]))]
             layers[i+1] = np.tanh(np.dot(matrix, layers[i]) + bias)
 
-        return layers[-1]
+        return 2*layers[-1]
         # should_negate = -1 if layers[-1][1] > 0 else 1
         # return [layers[-1][0] * should_negate * 2.1]  # usually output something in the range -2..2
 
@@ -178,6 +221,8 @@ def get_policy_class(policy_id):
     policy_id_to_policy_class = {
         'EnergyPendulumPolicy': EnergyPendulumPolicy,
         'PiecewisePendulumPolicy': PiecewisePendulumPolicy,
+        'DecisionTreePendulumPolicy': DecisionTreePendulumPolicy,
+        'CompositePendulumPolicy': CompositePendulumPolicy,
         'NeuralNetPendulumPolicy': NeuralNetPendulumPolicy,
         'CartpolePolicy': CartpolePolicy,
         'CartpolePIDPolicy': CartpolePIDPolicy,
