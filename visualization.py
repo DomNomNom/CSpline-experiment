@@ -172,7 +172,7 @@ def main():
     def on_change_polyline(polyline):
         nonlocal control_points
         polyline = sorted(polyline, key=lambda pos: pos[0])
-        control_points = CSpline.fit_to_line(polyline, 0, corner_angle=.0001)
+        control_points = CSpline.fit_to_line(polyline, 2, corner_angle=.0001)
         control_points = np.array(control_points)
         control_point_draggables.setData(pos=control_points)
         on_change_control_points(control_points)
