@@ -50,6 +50,18 @@ class CSpline:
     def i_handle_after(self, t:float):
         return self.i_center_before(t) + 3+1
 
+    @classmethod
+    def fit_to_line(cls, polyline, error, corner_angle=np.pi):
+        # load this dependency lazily as it's not as easy to get.
+        from curve_fit_nd import curve_from_points  # https://github.com/ideasman42/curve-fit-nd
+        tups = curve_from_points(polyline, error, corner_angle)
+        control_points = []
+        for center_i, (handle_before, center, handle_after) in tups:
+            control_points.append(center)
+            control_points.append(handle_before)
+            control_points.append(handle_after)
+        return control_points
+
     def get_pos(self, t: float) -> Vec:
         # Handle things outside the normal range by extrapolating.
         max_interp_t = len(self.control_points)//3 - 1

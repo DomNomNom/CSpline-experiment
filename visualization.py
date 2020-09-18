@@ -81,21 +81,32 @@ def main():
     pg.setConfigOptions(antialias=True)
     view_box = win.addPlot()
 
-    # Define the spline control points
-    center_0 = Vec2(1, 2)
-    center_1 = Vec2(6, 3)
-    center_2 = Vec2(8, 3)
-    control_points = [
-        center_0,
-        center_0 - Vec2(1,1),
-        center_0 + Vec2(1,1),
-        center_1,
-        center_1 - Vec2(2,4),
-        center_1 + Vec2(1,2),
-        center_2,
-        center_2 - Vec2(1,2),
-        center_2 + Vec2(1,2),
+    # # Define the spline control points
+    # center_0 = Vec2(1, 2)
+    # center_1 = Vec2(6, 3)
+    # center_2 = Vec2(8, 3)
+    # control_points = [
+    #     center_0,
+    #     center_0 - Vec2(1,1),
+    #     center_0 + Vec2(1,1),
+    #     center_1,
+    #     center_1 - Vec2(2,4),
+    #     center_1 + Vec2(1,2),
+    #     center_2,
+    #     center_2 - Vec2(1,2),
+    #     center_2 + Vec2(1,2),
+    # ]
+
+    import random
+    samples = [
+        0.01 * i*i
+        for i in range(50)
     ]
+    samples += samples[:-1][::-1]
+    random.seed(0)
+    # samples = [ x + 0.1 * random.random() for x in samples]
+    polyline = list(enumerate(samples))
+    control_points = CSpline.fit_to_line(polyline, .1, corner_angle=0.0014)
 
     def make_control_point_line_data(control_points):
         return np.array(list(itertools.chain(*(
@@ -129,25 +140,29 @@ def main():
         ])
     spline_curve = pg.PlotDataItem(pen=pg.mkPen(width=2, color='#ff0000ee'))
 
-    intersect = pg.GraphItem()
+    intersect_x = None
+    if intersect_x is not None:
+        intersect = pg.GraphItem()
 
     def on_update(control_points):
         control_point_lines.setData(make_control_point_line_data(control_points))
         spline_curve.setData(make_curve_data(control_points))
 
-        intersect_x = 4
-        spline = CSpline(control_points)
-        # intersect_pos = spline.get_pos(spline.fast_intersect(intersect_x))
-        pos = [
-            spline.get_pos(spline.fast_intersect(intersect_x, approximation_iterations=i))
-            for i in range(5)
-        ]
-        intersect.setData(
-            pos=pos,
-            symbol=['o'] * len(pos),
-            size=10,
-            symbolBrush=[pg.mkBrush(f'#FF0000{9-i}0') for i in range(len(pos))]
-        )
+        if intersect_x is not None:
+            spline = CSpline(control_points)
+            # intersect_pos = spline.get_pos(spline.fast_intersect(intersect_x))
+            pos = [
+                spline.get_pos(spline.fast_intersect(intersect_x, approximation_iterations=i))
+                for i in range(5)
+            ]
+
+            intersect.setData(
+                pos=pos,
+                symbol=['o'] * len(pos),
+                size=10,
+                symbolBrush=[pg.mkBrush(f'#FF0000{9-i}0') for i in range(len(pos))]
+            )
+
 
     draggables = DraggableNodes(on_update)
     draggables.setData(
@@ -162,9 +177,9 @@ def main():
     view_box.addItem(draggables)
     view_box.addItem(control_point_lines)
     view_box.addItem(spline_curve)
-    view_box.addItem(intersect)
+    if intersect_x is not None: view_box.addItem(intersect)
     # view_box.setAutoPan(x=False, y=False)
-    view_box.setRange(xRange=[-1,10], yRange=[-1,10])
+    # view_box.setRange(xRange=[-1,10], yRange=[-1,10])
     view_box.showGrid(x=True, y=True)
 
     import sys
