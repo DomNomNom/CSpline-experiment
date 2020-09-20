@@ -5,6 +5,42 @@ import itertools
 
 from cspline import CSpline, Vec2
 
+from ml_policies import ParameterCreatingPolicy
+from ml_optimizer import CrossEntopyMethodStrategy
+from cma import CMAEvolutionStrategy
+
+class TangentPolicy(ParameterCreatingPolicy):
+    def act(self, control_points):
+        '''
+        This function mutates given control_points
+        and returns the same list.
+        '''
+        self.current_parameter = 0
+        p = self.param  # shorthand for creating or reading parameters.
+        for i in range(0, len(control_points), 3):
+            center = control_points[i]
+            prev_handle = control_points[i+1]
+            next_handle = control_points[i+2]
+            # Next and prev handles are parameters
+            for j,x in enumerate(prev_handle):
+                prev_handle[j] = p(x, guess_std=abs(x - center[j])/3)
+            for j,x in enumerate(next_handle):
+                next_handle[j] = p(x, guess_std=abs(x - center[j])/3)
+
+            # current handles should be on the appropriate side of the center
+            epsilon = .0001;
+            prev_handle[0] = min(prev_handle[0], center[0] - epsilon)
+            next_handle[0] = max(next_handle[0], center[0] + epsilon)
+            # prev handle should be after last center.
+            if i > 0:
+                prev_handle[0] = max(prev_handle[0], control_points[i-3][0] + epsilon)
+            # next handle should be before next center.
+            if i + 3 < len(control_points):
+                next_handle[0] = min(next_handle[0], control_points[i+3][0] - epsilon)
+
+        return control_points
+
+
 class DraggableNodes(pg.GraphItem):
     def __init__(self, update_callback, get_children=lambda i: []):
         self.update_callback = update_callback
@@ -69,6 +105,8 @@ class DraggableNodes(pg.GraphItem):
 # Some functions to calculate the control point nodes.
 def parent(i):
     return (i//3) * 3
+def is_parent(i):
+    return parent(i) == i
 def children(i):
     if parent(i) != i:
         return []
@@ -108,6 +146,7 @@ def main():
     # samples = [ x + 1.1 * random.random() for x in samples]
     polyline = list(enumerate(samples))
     control_points = CSpline.fit_to_line(polyline, .1, corner_angle=0.0014)
+
 
     def make_control_point_line_data(control_points):
         return np.array(list(itertools.chain(*(
@@ -176,6 +215,7 @@ def main():
         control_points = np.array(control_points)
         control_point_draggables.setData(pos=control_points)
         on_change_control_points(control_points)
+    on_change_polyline(polyline)
     polyline_draggables = DraggableNodes(on_change_polyline)
     polyline_draggables.setData(
         pos=polyline,
@@ -183,6 +223,61 @@ def main():
         size=10,
         symbolBrush=pg.mkBrush('#AFFFAF80')
     )
+
+
+    # Use an evolutionary strategy to optimize stuff.
+    bootstrap = TangentPolicy(parameters=None)
+    bootstrap.act(control_points[:])
+    es = CMAEvolutionStrategy(
+        bootstrap.parameters,
+        np.array(bootstrap.parameters_std).mean(),
+        {}
+    )
+    # es = CrossEntopyMethodStrategy(
+    #     bootstrap.parameters,
+    #     bootstrap.parameters_std,
+    #     elite_frac=0.1,
+    # )
+
+    iteration = 0
+    def loss_function(parameters):
+        spline = CSpline(TangentPolicy(parameters).act(control_points))
+        loss = 0
+        for (x, wantY) in polyline:
+            t = spline.fast_intersect(x)
+            gotY = spline.get_pos(t)[1]
+            loss += (gotY - wantY) ** 2
+        return loss
+    def step():
+        nonlocal control_points
+        nonlocal iteration
+        iteration += 1
+        # Runs a step of the optimization algorithm
+        solutions = es.ask(number=12)
+        losses = [loss_function(parameters) for parameters in solutions]
+        mean_loss = np.mean(losses)
+        print(f'iteration {iteration:4d}: mean loss: {mean_loss:3.9f}  stop={es.stop()}')
+        if es.stop():
+            # QtGui.QApplication.instance().quit()
+            print('done.')
+            timer.stop()
+        # control_points = TangentPolicy(np.mean(solutions, axis=0)).act(control_points)
+        es.tell(solutions, losses)
+        control_points = TangentPolicy(solutions[0]).act(control_points)
+        control_point_draggables.setData(pos=control_points)
+        on_change_control_points(control_points)
+    step_proxy = QtGui.QGraphicsProxyWidget()
+    step_button = QtGui.QPushButton('step_button')
+    step_proxy.setWidget(step_button)
+    view_box.addItem(step_proxy)
+    p3 = win.addLayout(row=2, col=0)
+    p3.addItem(step_proxy, row=1, col=1)
+    step_button.clicked.connect(step)
+
+
+    timer = QtCore.QTimer()
+    timer.timeout.connect(step)
+    timer.start(10)
 
     view_box.addItem(control_point_draggables)
     view_box.addItem(polyline_draggables)
