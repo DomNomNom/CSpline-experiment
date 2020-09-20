@@ -14,7 +14,7 @@ class ParameterCreatingPolicy():
     def __init__(self, parameters: Optional[np.array]=None):
         '''
         When parameters are not specified, the default values are chosen in when act()
-        \which then become visible.
+        which then become visible.
         When parameters are specified, it is assumed they match the shape of the default parameters.
         '''
         self.mode = self.MODE_CREATE_PARAMS if parameters is None else self.MODE_READ_PARAMS
