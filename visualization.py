@@ -138,7 +138,8 @@ def main():
 
     import random
     samples = [
-        0.1 * i*i
+        # 0.1 * i*i
+        20.*np.sin(i/5.)
         for i in range(20)
     ]
     samples += samples[:-1][::-1]
@@ -239,33 +240,33 @@ def main():
     #     elite_frac=0.1,
     # )
 
-    iteration = 0
-    def loss_function(parameters):
-        spline = CSpline(TangentPolicy(parameters).act(control_points))
+    def loss_function(control_points):
+        spline = CSpline(control_points)
         loss = 0
         for (x, wantY) in polyline:
             t = spline.fast_intersect(x)
             gotY = spline.get_pos(t)[1]
             loss += (gotY - wantY) ** 2
         return loss
+    iteration = 0
+    toleranace = 100
+    datapoints = []
+
     def step():
         nonlocal control_points
         nonlocal iteration
+        nonlocal toleranace
         iteration += 1
         # Runs a step of the optimization algorithm
         solutions = es.ask(number=12)
-        losses = [loss_function(parameters) for parameters in solutions]
-        mean_loss = np.mean(losses)
-        print(f'iteration {iteration:4d}: mean loss: {mean_loss:3.9f}  stop={es.stop()}')
-        if es.stop():
-            # QtGui.QApplication.instance().quit()
-            print('done.')
+        toleranace *= .98
+        if toleranace < .0001:
             timer.stop()
-        # control_points = TangentPolicy(np.mean(solutions, axis=0)).act(control_points)
-        es.tell(solutions, losses)
-        control_points = TangentPolicy(solutions[0]).act(control_points)
+        control_points = CSpline.fit_to_line(polyline, toleranace, corner_angle=0.0014)
+        datapoints.append((toleranace, loss_function(control_points), len(control_points)/3.))
         control_point_draggables.setData(pos=control_points)
         on_change_control_points(control_points)
+
     step_proxy = QtGui.QGraphicsProxyWidget()
     step_button = QtGui.QPushButton('step_button')
     step_proxy.setWidget(step_button)
@@ -277,7 +278,7 @@ def main():
 
     timer = QtCore.QTimer()
     timer.timeout.connect(step)
-    timer.start(10)
+    # timer.start(10)
 
     view_box.addItem(control_point_draggables)
     view_box.addItem(polyline_draggables)
@@ -294,6 +295,8 @@ def main():
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
         QtGui.QApplication.instance().exec_()
 
+    from xy_plot import plot_xy
+    plot_xy(datapoints)
 
 if __name__ == '__main__':
     main()

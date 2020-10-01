@@ -2,6 +2,11 @@ from sympy import *
 
 A,B,C,D,t,x = symbols('A B C D t x')
 
+print(simplify(
+    (sin(t)/(1+cos(t)))
+    - ((1-cos(t))/sin(t))
+))
+
 # f = ((1-t)**3*A + 3*t*(1-t)**2*B + 3*(1-t)*t**2*C + t**3*D) - x
 # f = 3*t*(1-t)**2*B + 3*(1-t)*t**2*C + t**3 - x
 # print(solve(f, t)[1])
@@ -9,8 +14,8 @@ A,B,C,D,t,x = symbols('A B C D t x')
 # print(simplify(f / diff(f, t)))
 
 # f = x - (3*t*(1-t)**2*B + 3*(1-t)*t**2*C + t**3)
-f = ((1-t)**3*A + 3*t*(1-t)**2*B + 3*(1-t)*t**2*C + t**3*D) - x
-print(simplify(f / diff(f, t)))
+# f = ((1-t)**3*A + 3*t*(1-t)**2*B + 3*(1-t)*t**2*C + t**3*D) - x
+# print(simplify(f / diff(f, t)))
 
 # print('T=t-1; ' + str(simplify(f / diff(f, t)))
 #     .replace('(t - 1)', 'T')

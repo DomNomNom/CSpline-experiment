@@ -60,7 +60,7 @@ class CSpline:
             control_points.append(center)
             control_points.append(handle_before)
             control_points.append(handle_after)
-        return control_points
+        return np.array(control_points)
 
     def get_pos(self, t: float) -> Vec:
         # Handle things outside the normal range by extrapolating.
