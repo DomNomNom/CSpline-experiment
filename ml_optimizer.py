@@ -213,17 +213,17 @@ if __name__ == '__main__':
         return results
 
     # Define our optimizer.
-    batch_size = 100
-    # es = CMAEvolutionStrategy(
-    #     bootstrap.parameters,
-    #     np.array(bootstrap.parameters_std).mean(),
-    #     {}
-    # )
-    es = CrossEntopyMethodStrategy(
+    batch_size = 50
+    es = CMAEvolutionStrategy(
         bootstrap.parameters,
-        bootstrap.parameters_std,
-        elite_frac=0.1,
+        np.array(bootstrap.parameters_std).mean(),
+        {}
     )
+    # es = CrossEntopyMethodStrategy(
+    #     bootstrap.parameters,
+    #     bootstrap.parameters_std,
+    #     elite_frac=0.1,
+    # )
     fixed_parameters = None
     if fixed_parameters is not None:
         es = ConstantEvolutionaryStrategy(fixed_parameters)

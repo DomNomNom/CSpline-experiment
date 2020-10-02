@@ -164,6 +164,38 @@ class NeuralNetPendulumPolicy(ParameterCreatingPolicy):
         # should_negate = -1 if layers[-1][1] > 0 else 1
         # return [layers[-1][0] * should_negate * 2.1]  # usually output something in the range -2..2
 
+class RecurrantNeuralNetPendulumPolicy(ParameterCreatingPolicy):
+    '''
+    A policy that uses a neural net to make decisions
+    '''
+    def __init__(self, parameters):
+        super().__init__(parameters)
+        self.prev_out = np.zeros(shape=(2,))
+
+
+    def act(self, observation):
+        self.current_parameter = 0
+        p = self.param  # shorthand for creating or reading parameters.
+
+        layers = [
+            np.hstack([observation, self.prev_out]),
+            np.zeros(shape=(6,)),
+            np.zeros(shape=(len(self.prev_out),)),
+        ]
+        connections = []
+        for i in range(len(layers)-1):
+            matrix = np.array([
+                [p(0) for _ in range(len(layers[i]))]
+                for _ in range(len(layers[i+1]))
+            ])
+            bias = [p(0) for _ in range(len(layers[i+1]))]
+            layers[i+1] = np.tanh(np.dot(matrix, layers[i]) + bias)
+
+        self.prev_out = layers[-1]
+        return 2*layers[-1][:1]
+        # should_negate = -1 if layers[-1][1] > 0 else 1
+        # return [layers[-1][0] * should_negate * 2.1]  # usually output something in the range -2..2
+
 
 class CartpolePolicy(ParameterCreatingPolicy):
     '''
@@ -226,6 +258,7 @@ def get_policy_class(policy_id):
         'NeuralNetPendulumPolicy': NeuralNetPendulumPolicy,
         'CartpolePolicy': CartpolePolicy,
         'CartpolePIDPolicy': CartpolePIDPolicy,
+        'RecurrantNeuralNetPendulumPolicy': RecurrantNeuralNetPendulumPolicy,
     }
     if policy_id not in policy_id_to_policy_class:
         raise NotImplementedError(f'No policy_id not found: {repr(policy_id)}')
