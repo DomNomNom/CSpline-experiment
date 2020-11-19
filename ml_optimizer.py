@@ -104,7 +104,7 @@ class MLoopLearnerStrategy(OOOptimizer):
 
 def do_rollout(agent, env, num_steps, render=False):
     total_reward = 0
-    internal_repetitions = 5
+    internal_repetitions = 1
     for _ in range(internal_repetitions):
         ob = env.reset()
         for t in range(num_steps):
@@ -198,7 +198,7 @@ if __name__ == '__main__':
     # Set up paralellism for running evaluations (multiprocessing gets around Python's GIL)
     num_steps = 200
     num_processes = 10
-    eval_timeout = 1.0  # maximum seconds for a single result to come back
+    eval_timeout = 10.0  # maximum seconds for a single result to come back
     ctx = mp.get_context('spawn')
     parameters_q = ctx.Queue()
     reward_q = ctx.Queue()
@@ -241,32 +241,33 @@ if __name__ == '__main__':
 
     # Define our optimizer.
     batch_size = 50
-    # es = CMAEvolutionStrategy(
-    #     bootstrap.parameters,
-    #     np.array(bootstrap.parameters_std).mean(),
-    #     {}
-    # )
+    es = CMAEvolutionStrategy(
+        bootstrap.parameters,
+        np.array(bootstrap.parameters_std).mean(),
+        {}
+    )
     # es = CrossEntopyMethodStrategy(
     #     bootstrap.parameters,
     #     bootstrap.parameters_std,
     #     elite_frac=0.1,
     # )
-    params_out_queue = Queue()
-    costs_in_queue = Queue()
-    end_event = Event()
-    es = MLoopLearnerStrategy(
-        learner=mloop.learners.DifferentialEvolutionLearner(
-            num_params = len(bootstrap.parameters),
-            min_boundary = np.array(bootstrap.parameters) - 3*np.array(bootstrap.parameters_std),
-            max_boundary = np.array(bootstrap.parameters) + 3*np.array(bootstrap.parameters_std),
-            params_out_queue = params_out_queue,
-            costs_in_queue = costs_in_queue,
-            end_event = end_event,
-        ),
-        params_out_queue = params_out_queue,
-        costs_in_queue = costs_in_queue,
-        end_event = end_event,
-    )
+
+    # params_out_queue = Queue()
+    # costs_in_queue = Queue()
+    # end_event = Event()
+    # es = MLoopLearnerStrategy(
+    #     learner=mloop.learners.DifferentialEvolutionLearner(
+    #         num_params = len(bootstrap.parameters),
+    #         min_boundary = np.array(bootstrap.parameters) - 3*np.array(bootstrap.parameters_std),
+    #         max_boundary = np.array(bootstrap.parameters) + 3*np.array(bootstrap.parameters_std),
+    #         params_out_queue = params_out_queue,
+    #         costs_in_queue = costs_in_queue,
+    #         end_event = end_event,
+    #     ),
+    #     params_out_queue = params_out_queue,
+    #     costs_in_queue = costs_in_queue,
+    #     end_event = end_event,
+    # )
 
     fixed_parameters = None
     if fixed_parameters is not None:
