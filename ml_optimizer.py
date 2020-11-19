@@ -12,6 +12,10 @@ import multiprocessing as mp
 import numpy as np
 import pickle
 
+from threading import Event
+from queue import Queue
+import mloop.learners
+
 from ml_policies import get_policy_class
 
 class ConstantEvolutionaryStrategy(OOOptimizer):
@@ -73,6 +77,29 @@ class CrossEntopyMethodStrategy(OOOptimizer):
     def stop(self):
         return self.parameters_std.mean() < 0.0001
 
+class MLoopLearnerStrategy(OOOptimizer):
+    def __init__(self, learner, params_out_queue, costs_in_queue, end_event):
+        self.learner = learner
+        self.params_out_queue = params_out_queue
+        self.costs_in_queue = costs_in_queue
+        self.end_event = end_event
+        self.learner.daemon = True
+        self.learner.start()
+
+    def ask(self, number=1000):
+        out = []
+        for i in range(number):
+            print(f'getting param {i}')
+            out.append(self.params_out_queue.get())
+        return out
+
+    def tell(self, solutions, rewards):
+        for reward in rewards:
+            print(f'putting in reward.')
+            self.costs_in_queue.put(reward)
+
+    def stop(self):
+        return False
 
 
 def do_rollout(agent, env, num_steps, render=False):
@@ -214,16 +241,33 @@ if __name__ == '__main__':
 
     # Define our optimizer.
     batch_size = 50
-    es = CMAEvolutionStrategy(
-        bootstrap.parameters,
-        np.array(bootstrap.parameters_std).mean(),
-        {}
-    )
+    # es = CMAEvolutionStrategy(
+    #     bootstrap.parameters,
+    #     np.array(bootstrap.parameters_std).mean(),
+    #     {}
+    # )
     # es = CrossEntopyMethodStrategy(
     #     bootstrap.parameters,
     #     bootstrap.parameters_std,
     #     elite_frac=0.1,
     # )
+    params_out_queue = Queue()
+    costs_in_queue = Queue()
+    end_event = Event()
+    es = MLoopLearnerStrategy(
+        learner=mloop.learners.DifferentialEvolutionLearner(
+            num_params = len(bootstrap.parameters),
+            min_boundary = np.array(bootstrap.parameters) - 3*np.array(bootstrap.parameters_std),
+            max_boundary = np.array(bootstrap.parameters) + 3*np.array(bootstrap.parameters_std),
+            params_out_queue = params_out_queue,
+            costs_in_queue = costs_in_queue,
+            end_event = end_event,
+        ),
+        params_out_queue = params_out_queue,
+        costs_in_queue = costs_in_queue,
+        end_event = end_event,
+    )
+
     fixed_parameters = None
     if fixed_parameters is not None:
         es = ConstantEvolutionaryStrategy(fixed_parameters)
