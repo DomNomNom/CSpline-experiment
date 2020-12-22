@@ -110,6 +110,21 @@ class PiecewisePendulumPolicy(ParameterCreatingPolicy):
         return [np.clip(torques[-1], -2, 2)]
 
 
+class CodeGolfPendulumPolicy(ParameterCreatingPolicy):
+    """
+    A policy to solve Pendulum-v0
+    """
+
+    def act(self, observation):
+        self.current_parameter = 0
+        p = self.param  # shorthand for creating or reading parameters.
+        p(0)
+        p(0)
+
+        y, x, thetadot = observation
+        return [thetadot if y < 0 else -5 * thetadot + -11 * x]
+
+
 class DecisionTreePendulumPolicy(ParameterCreatingPolicy):
     """
     A piecewise linear policy to solve Pendulum-v0
@@ -297,6 +312,7 @@ def get_policy_class(policy_id):
         "CartpolePolicy": CartpolePolicy,
         "CartpolePIDPolicy": CartpolePIDPolicy,
         "RecurrantNeuralNetPendulumPolicy": RecurrantNeuralNetPendulumPolicy,
+        "CodeGolfPendulumPolicy": CodeGolfPendulumPolicy,
     }
     if policy_id not in policy_id_to_policy_class:
         raise NotImplementedError(f"No policy_id not found: {repr(policy_id)}")
