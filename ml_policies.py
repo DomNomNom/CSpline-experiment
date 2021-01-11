@@ -1,3 +1,5 @@
+import itertools
+from math import atan2, tau
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -213,6 +215,33 @@ class NeuralNetPendulumPolicy(ParameterCreatingPolicy):
         # return [layers[-1][0] * should_negate * 2.1]  # usually output something in the range -2..2
 
 
+class CosineTransformPendulumPolicy(ParameterCreatingPolicy):
+    """
+    A policy that uses a neural net to make decisions
+    """
+
+    def act(self, observation):
+        self.current_parameter = 0
+        p = self.param  # shorthand for creating or reading parameters.
+
+        y, x, thetadot = observation
+
+        max_speed = 8
+        x = (atan2(x, y) + tau / 2) / tau
+        y = (thetadot + max_speed) / (max_speed * 2)
+
+        frequencies = np.array([0, tau / 2, tau, tau * 2])
+        cos_f_x = np.cos(frequencies * x)
+        cos_f_y = np.cos(frequencies * y)
+
+        out = 0
+        for cx, cy in itertools.product(cos_f_x, cos_f_y):
+            out += p(0) * cx * cy
+        # for f_x, f_y in itertools.product(frequencies, frequencies):
+        #     out += p() * cos(f_x * x) * cos(f_y * y)
+        return [np.clip(out, -1, 1) * 2]
+
+
 class RecurrantNeuralNetPendulumPolicy(ParameterCreatingPolicy):
     """
     A policy that uses a neural net to make decisions
@@ -313,6 +342,7 @@ def get_policy_class(policy_id):
         "CartpolePIDPolicy": CartpolePIDPolicy,
         "RecurrantNeuralNetPendulumPolicy": RecurrantNeuralNetPendulumPolicy,
         "CodeGolfPendulumPolicy": CodeGolfPendulumPolicy,
+        "CosineTransformPendulumPolicy": CosineTransformPendulumPolicy,
     }
     if policy_id not in policy_id_to_policy_class:
         raise NotImplementedError(f"No policy_id not found: {repr(policy_id)}")

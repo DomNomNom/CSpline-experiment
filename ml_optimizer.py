@@ -15,7 +15,6 @@ from cma.interfaces import OOOptimizer
 from gym import logger
 from gym import make as make_env
 from gym import wrappers
-
 from ml_policies import get_policy_class
 from policy_vis_model import VisDataModel, VisPolicy, model_filepath
 
@@ -87,7 +86,7 @@ class CrossEntopyMethodStrategy(OOOptimizer):
 
 def do_rollout(agent, env, num_steps, render=False):
     total_reward = 0
-    internal_repetitions = 3
+    internal_repetitions = 5
     for _ in range(internal_repetitions):
         ob = env.reset()
         for t in range(num_steps):
